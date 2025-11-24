@@ -1,0 +1,65 @@
+[project]
+name = "kotinjection"
+description = "Koin-like lightweight dependency injection container for Python with type inference support"
+authors = [
+    { name = "Vatis", email = "vatis@lalcs.com" }
+]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.9"
+keywords = [
+    "dependency-injection",
+    "di",
+    "ioc",
+    "inversion-of-control",
+    "koin",
+    "container",
+    "type-inference",
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+]
+dynamic = ["version"]
+
+[project.urls]
+"Homepage" = "https://github.com/Lalcs/kotinjection"
+"Documentation" = "https://github.com/Lalcs/kotinjection#readme"
+"Bug Tracker" = "https://github.com/Lalcs/kotinjection/issues"
+"Repository" = "https://github.com/Lalcs/kotinjection"
+"Changelog" = "https://github.com/Lalcs/kotinjection/releases"
+
+
+[build-system]
+requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
+build-backend = "poetry_dynamic_versioning.backend"
+
+[tool.poetry]
+version = "0.0.0"
+
+[tool.poetry.requires-plugins]
+poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
+
+[tool.poetry.group.dev.dependencies]
+coverage = "^7.9.2"
+
+[tool.poetry-dynamic-versioning]
+enable = true
+format-jinja = """
+    {%- if distance == 0 -%}
+        {{ serialize_pep440(base, stage, revision) }}
+    {%- else -%}
+        {{ timestamp[:4] }}.{{ timestamp[4:6] }}.{{ timestamp[6:8] }}.{{ timestamp[8:] }}
+    {%- endif -%}
+"""
