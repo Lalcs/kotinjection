@@ -1,13 +1,13 @@
 # KotInjection
 
-Koin-like Dependency Injection Container for Python
-
 [![image](https://img.shields.io/pypi/v/Kotinjection.svg)](https://pypi.org/project/Kotinjection/)
 [![image](https://img.shields.io/pypi/l/Kotinjection.svg)](https://pypi.org/project/Kotinjection/)
 [![image](https://img.shields.io/pypi/pyversions/Kotinjection.svg)](https://pypi.org/project/Kotinjection/)
 [![image](https://img.shields.io/github/contributors/lalcs/Kotinjection.svg)](https://github.com/lalcs/Kotinjection/graphs/contributors)
 [![image](https://img.shields.io/pypi/dm/Kotinjection)](https://pypistats.org/packages/Kotinjection)
 [![Unit Tests](https://github.com/Lalcs/Kotinjection/actions/workflows/unittest.yml/badge.svg)](https://github.com/Lalcs/Kotinjection/actions/workflows/unittest.yml)
+
+Koin-like Dependency Injection Container for Python
 
 **KotInjection** is a lightweight DI (Dependency Injection) container library for Python, inspired by
 Kotlin's [Koin](https://insert-koin.io/). It features type inference-based automatic dependency resolution and
@@ -177,25 +177,25 @@ For complete API documentation, see [API Reference](docs/api_reference.md).
 
 ### Quick Reference
 
-| Class | Description |
-|-------|-------------|
-| `KotInjection` | Global DI container API |
-| `KotInjectionCore` | Isolated container instance |
-| `KotInjectionModule` | Dependency definitions container |
+| Class                           | Description                        |
+|---------------------------------|------------------------------------|
+| `KotInjection`                  | Global DI container API            |
+| `KotInjectionCore`              | Isolated container instance        |
+| `KotInjectionModule`            | Dependency definitions container   |
 | `IsolatedKotInjectionComponent` | Base class for isolated components |
 
 ### Key Methods
 
 ```python
 # Global API
-KotInjection.start(modules=[...])    # Initialize
-KotInjection.get[Type]()             # Retrieve dependency
-KotInjection.stop()                  # Cleanup
+KotInjection.start(modules=[...])  # Initialize
+KotInjection.get[Type]()  # Retrieve dependency
+KotInjection.stop()  # Cleanup
 
 # Module Definition
-module.single[Type](factory)         # Singleton
-module.factory[Type](factory)        # Factory
-module.get()                         # Type inference in factories
+module.single[Type](factory)  # Singleton
+module.factory[Type](factory)  # Factory
+module.get()  # Type inference in factories
 ```
 
 ## Advanced Usage
