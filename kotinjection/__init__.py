@@ -15,6 +15,8 @@ from .exceptions import (
     TypeInferenceError,
 )
 from .global_context import GlobalContext
+from .inject_descriptor import InjectDescriptor
+from .inject_proxy import create_inject
 from .lifecycle import KotInjectionLifeCycle
 from .module import KotInjectionModule
 
@@ -26,6 +28,9 @@ __all__ = [
     "GlobalContext",
     "KotInjectionModule",
     "KotInjectionLifeCycle",
+    # Inject
+    "InjectDescriptor",
+    "create_inject",
     # Exceptions
     "KotInjectionError",
     "AlreadyStartedError",

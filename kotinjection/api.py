@@ -23,6 +23,7 @@ Example::
 from typing import List
 
 from .get_proxy import KotInjectionGetProxy
+from .inject_proxy import KotInjectionInjectProxy
 from .global_context import GlobalContext
 from .module import KotInjectionModule
 
@@ -35,6 +36,7 @@ class KotInjection:
 
     Attributes:
         get: Proxy object supporting get[Type]() syntax for dependency retrieval
+        inject: Proxy object supporting inject[Type] syntax for lazy injection
 
     Example::
 
@@ -47,8 +49,15 @@ class KotInjection:
         # Start the container
         KotInjection.start(modules=[module])
 
-        # Retrieve dependencies
+        # Retrieve dependencies (eager)
         repo = KotInjection.get[UserRepository]()
+
+        # Or use lazy injection as class attribute
+        class MyService:
+            db = KotInjection.inject[Database]
+
+            def action(self):
+                return self.db.query()  # Resolved on first access
 
         # Stop when done
         KotInjection.stop()
@@ -57,8 +66,11 @@ class KotInjection:
     # Internal GlobalContext instance
     _context: GlobalContext = GlobalContext()
 
-    # Proxy object supporting get[Type]() syntax
+    # Proxy object supporting get[Type]() syntax (eager)
     get = KotInjectionGetProxy(lambda: KotInjection._context.get_or_null())
+
+    # Proxy object supporting inject[Type] syntax (lazy)
+    inject = KotInjectionInjectProxy(lambda: KotInjection._context.get_or_null())
 
     @classmethod
     def start(cls, modules: List[KotInjectionModule]) -> None:
