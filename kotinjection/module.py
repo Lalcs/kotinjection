@@ -22,7 +22,7 @@ Example::
     KotInjection.start(modules=[module])
 """
 
-from typing import List, Any
+from typing import List, Any, Optional
 
 from .resolution_context import _resolution_context
 from .definition import Definition
@@ -120,7 +120,7 @@ class KotInjectionModule:
         self._definitions.append(definition)
 
     @staticmethod
-    def get() -> Any:
+    def get(index: Optional[int] = None) -> Any:
         """
         Type inference version of get() - for use within factories only
 
@@ -128,11 +128,18 @@ class KotInjectionModule:
         dependencies. Automatically determines whether the global container or
         an isolated container is being used.
 
+        Args:
+            index: Optional parameter index to resolve. If specified, resolves
+                the parameter at that index directly instead of using sequential
+                type inference. Use this when mixing manual instances with
+                module.get() calls.
+
         Returns:
             The resolved dependency instance
 
         Raises:
-            ResolutionContextError: When called outside a resolution context
+            ResolutionContextError: When called outside a resolution context,
+                or when index is out of range
             NotInitializedError: When the container is not initialized
 
         Example:
@@ -149,6 +156,26 @@ class KotInjectionModule:
             app = KotInjectionCore()
             app.load_modules([module])
             ```
+
+        Example with index parameter:
+            ```python
+            class UserRepository:
+                def __init__(self, redis: Redis, db: Database):
+                    ...
+
+            module = KotInjectionModule()
+            with module:
+                module.single[Database](lambda: Database())
+                # Use index=1 to resolve the second parameter (Database)
+                module.single[UserRepository](
+                    lambda: UserRepository(Redis(host="localhost"), module.get(1))
+                )
+            ```
+
+        Note:
+            When mixing manual instances with module.get(), prefer using
+            keyword arguments for clarity:
+            ``lambda: UserRepository(redis=Redis(), db=module.get())``
         """
         ctx = _resolution_context.get()
         if ctx is None:
@@ -168,8 +195,17 @@ class KotInjectionModule:
                 "Call KotInjection.start() or app.load_modules() first"
             )
 
-        # Use shared logic from ResolutionContext
-        param_type = ctx.get_next_parameter_type()
+        # If index is specified, resolve that specific parameter
+        if index is not None:
+            if index < 0 or index >= len(ctx.parameter_types):
+                raise ResolutionContextError(
+                    f"Index {index} out of range. "
+                    f"Expected 0-{len(ctx.parameter_types) - 1}."
+                )
+            param_type = ctx.parameter_types[index]
+        else:
+            # Use shared logic from ResolutionContext
+            param_type = ctx.get_next_parameter_type()
 
         # Resolve dependency from the runtime context's container
         return ctx.container.resolve(param_type)

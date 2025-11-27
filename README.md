@@ -288,6 +288,44 @@ app.load_modules([module])
 service = app.get[Service]()
 ```
 
+### Mixing Manual Instances with Type Inference
+
+`module.get()` resolves dependencies based on sequential call order. When mixing manually instantiated objects with `module.get()`, **use keyword arguments** for clarity.
+
+#### Pattern That Doesn't Work
+
+When `module.get()` call order doesn't match parameter order, type inference fails:
+
+```python
+class UserRepository:
+    def __init__(self, redis: Redis, db: Database):
+        ...
+
+# module.get() returns Redis (index 0), but we want Database!
+module.single[UserRepository](
+    lambda: UserRepository(Redis(host="localhost"), module.get())
+)
+```
+
+#### Recommended: Use Keyword Arguments
+
+```python
+module.single[UserRepository](
+    lambda: UserRepository(redis=Redis(host="localhost"), db=module.get())
+)
+```
+
+#### Alternative: Use Index Parameter
+
+Specify the parameter index explicitly with `module.get(index)`:
+
+```python
+# module.get(1) resolves the second parameter (Database)
+module.single[UserRepository](
+    lambda: UserRepository(Redis(host="localhost"), module.get(1))
+)
+```
+
 ## Comparison with Koin
 
 | Feature           | Koin (Kotlin)               | KotInjection (Python)                   |

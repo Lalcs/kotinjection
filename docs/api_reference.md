@@ -467,9 +467,12 @@ module.factory[RequestHandler](
 
 ---
 
-#### `module.get()`
+#### `module.get(index: Optional[int] = None)`
 
 **Description**: Type inference-based dependency resolution within factory functions.
+
+**Parameters**:
+- `index` (Optional[int]): Parameter index to resolve. If specified, resolves the parameter at that index directly instead of using sequential type inference.
 
 **Returns**: Resolved dependency instance
 
@@ -483,13 +486,63 @@ with module:
     )
 ```
 
+**Example with index parameter**:
+```python
+class UserRepository:
+    def __init__(self, redis: Redis, db: Database):
+        ...
+
+module = KotInjectionModule()
+with module:
+    module.single[Database](lambda: Database())
+    # Use index=1 to resolve the second parameter (Database)
+    module.single[UserRepository](
+        lambda: UserRepository(Redis(host="localhost"), module.get(1))
+    )
+```
+
 **Notes**:
 - Can only be used within factory functions
 - Automatically infers type based on `__init__` type hints
 - All parameters must have type hints
+- When mixing manual instances with `module.get()`, prefer using keyword arguments
 
 **Exceptions**:
-- `ResolutionContextError`: When called outside a resolution context
+- `ResolutionContextError`: When called outside a resolution context, or when index is out of range
+
+---
+
+#### Type Inference Limitations
+
+`module.get()` resolves types based on sequential call order. When mixing manual instances with `module.get()`, **the call order must match the parameter order**.
+
+**Pattern that doesn't work**:
+```python
+class UserRepository:
+    def __init__(self, redis: Redis, db: Database):
+        ...
+
+# module.get() returns Redis (index 0), but we want Database!
+module.single[UserRepository](
+    lambda: UserRepository(Redis(), module.get())  # Wrong!
+)
+```
+
+**Recommended solutions**:
+
+1. **Use keyword arguments** (preferred):
+```python
+module.single[UserRepository](
+    lambda: UserRepository(redis=Redis(), db=module.get())
+)
+```
+
+2. **Use index parameter**:
+```python
+module.single[UserRepository](
+    lambda: UserRepository(Redis(), module.get(1))  # Explicitly get Database
+)
+```
 
 ---
 
