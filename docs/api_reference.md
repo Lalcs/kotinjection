@@ -375,13 +375,20 @@ class MyComponent(IsolatedKotInjectionComponent):
 
 Container for dependency definitions.
 
-#### `KotInjectionModule()`
+#### `KotInjectionModule(created_at_start: bool = False)`
 
 **Description**: Create a new module instance.
 
+**Parameters**:
+- `created_at_start` (bool): If True, all singleton definitions in this module will be eagerly initialized at `start()` time. Defaults to False.
+
 **Example**:
 ```python
+# Default: lazy initialization
 module = KotInjectionModule()
+
+# All singletons in this module will be eagerly initialized
+module = KotInjectionModule(created_at_start=True)
 ```
 
 ---
@@ -400,7 +407,7 @@ with module:
 
 ---
 
-#### `module.single[Type](factory: Callable)`
+#### `module.single[Type](factory: Callable, created_at_start: Optional[bool] = None)`
 
 **Description**: Register a dependency with singleton scope.
 
@@ -409,21 +416,30 @@ with module:
 
 **Parameters**:
 - `factory` (Callable): Factory function to create the instance
+- `created_at_start` (Optional[bool]): If True, initialize at `start()` time. If False, use lazy initialization. If None (default), inherits from module's `created_at_start` setting.
 
 **Example**:
 ```python
-# No dependencies
+# No dependencies (lazy initialization by default)
 module.single[Database](lambda: Database())
+
+# Eager initialization
+module.single[Database](lambda: Database(), created_at_start=True)
 
 # With dependencies
 module.single[Repository](
     lambda: Repository(db=module.get())
 )
+
+# Override module-level setting
+module = KotInjectionModule(created_at_start=True)  # Module: eager
+with module:
+    module.single[Cache](lambda: Cache(), created_at_start=False)  # Override: lazy
 ```
 
 **Notes**:
 - Same instance is reused
-- Factory is executed only once on first retrieval
+- Factory is executed only once on first retrieval (or at `start()` time if `created_at_start=True`)
 
 ---
 

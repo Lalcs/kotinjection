@@ -16,5 +16,7 @@ class Definition:
     interface: Type
     factory: Callable
     lifecycle: KotInjectionLifeCycle
-    parameter_types: List[Type]  # Pre-parsed parameter types
+    parameter_types: Optional[List[Type]] = None  # Lazily resolved parameter types
+    implementation_type: Optional[Type] = None  # Cached implementation type
     instance: Optional[Any] = None
+    created_at_start: bool = False  # Eager initialization flag

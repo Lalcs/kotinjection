@@ -57,12 +57,17 @@ class KotInjectionModule:
             )
     """
 
-    def __init__(self):
+    def __init__(self, created_at_start: bool = False):
         """Initialize a new module with empty definitions.
 
         Creates builders for singleton and factory registrations.
+
+        Args:
+            created_at_start: If True, all singleton definitions in this module
+                will be eagerly initialized at start() time. Defaults to False.
         """
         self._definitions: List[Definition] = []
+        self._created_at_start: bool = created_at_start
         self.single = SingletonBuilder(self)
         self.factory = FactoryBuilder(self)
 
@@ -151,6 +156,11 @@ class KotInjectionModule:
                 "get() cannot be used without a type parameter. "
                 "Use type inference within a factory function or use get[Type]()"
             )
+
+        # In dry-run mode, return a placeholder for type discovery
+        if ctx.dry_run:
+            from .dry_run_placeholder import DryRunPlaceholder
+            return DryRunPlaceholder()
 
         if ctx.container is None:
             raise NotInitializedError(

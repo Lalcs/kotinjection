@@ -215,10 +215,11 @@ class KotInjectionContainer:
         """Create an instance using the factory function.
 
         This method:
-        1. Sets up a resolution context with pre-analyzed parameter types
-        2. Executes the factory function
-        3. Validates the return type (in debug mode)
-        4. Handles factory execution errors
+        1. Discovers implementation type via dry-run if not cached
+        2. Sets up a resolution context with parameter types
+        3. Executes the factory function
+        4. Validates the return type (in debug mode)
+        5. Handles factory execution errors
 
         Args:
             interface: The type being instantiated
@@ -232,11 +233,20 @@ class KotInjectionContainer:
             CircularDependencyError: Propagated from nested resolutions
 
         Note:
-            Parameter types are pre-analyzed during module definition,
-            making this operation fast at runtime.
+            - Singleton: Parameter types are lazily resolved on first access
+              via dry-run, then cached for subsequent resolutions.
+            - Factory: Dry-run is executed every time to support factories
+              that return different implementation types.
         """
-        # Use pre-analyzed parameter types (no runtime analysis needed!)
-        parameter_types = definition.parameter_types
+        # Type discovery strategy depends on lifecycle
+        if definition.lifecycle == KotInjectionLifeCycle.FACTORY:
+            # Factory: Always run dry-run (may return different implementations)
+            parameter_types = self._discover_parameter_types(interface, definition)
+        else:
+            # Singleton: Lazy discovery with caching
+            if definition.parameter_types is None:
+                self._discover_and_cache_parameter_types(interface, definition)
+            parameter_types = definition.parameter_types
 
         # Create a new resolution context
         parent_ctx = _resolution_context.get()
@@ -256,12 +266,18 @@ class KotInjectionContainer:
             instance = definition.factory()
 
             # Validate return type (only in debug mode for performance)
-            if __debug__ and not isinstance(instance, interface):
-                raise TypeInferenceError(
-                    f"Factory for {interface.__name__} returned {type(instance).__name__}, "
-                    f"expected {interface.__name__}. "
-                    f"Ensure the factory returns the correct type."
+            # Skip validation if interface is ABC or Protocol (implementation returns subclass)
+            if __debug__:
+                from abc import ABC
+                is_abstract = hasattr(interface, '__abstractmethods__') or (
+                    isinstance(interface, type) and issubclass(interface, ABC)
                 )
+                if not is_abstract and not isinstance(instance, interface):
+                    raise TypeInferenceError(
+                        f"Factory for {interface.__name__} returned {type(instance).__name__}, "
+                        f"expected {interface.__name__}. "
+                        f"Ensure the factory returns the correct type."
+                    )
 
             return instance
         except (DefinitionNotFoundError, CircularDependencyError, TypeInferenceError):
@@ -275,6 +291,77 @@ class KotInjectionContainer:
             ) from e
         finally:
             _resolution_context.reset(token)
+
+    def _discover_parameter_types(
+        self,
+        interface: Type,
+        definition: Definition
+    ) -> List[Type]:
+        """Discover parameter types via dry-run without caching.
+
+        Used for Factory lifecycle where different implementations
+        may be returned on each call.
+
+        Args:
+            interface: The interface type being resolved
+            definition: The Definition containing the factory
+
+        Returns:
+            List of parameter types for the implementation class
+
+        Raises:
+            TypeInferenceError: When type discovery fails
+        """
+        from .definition_builder import DefinitionBuilder
+
+        # Create dry-run context
+        ctx = ResolutionContext()
+        ctx.dry_run = True
+        ctx.resolving.add(interface)
+
+        token = _resolution_context.set(ctx)
+        try:
+            # Execute factory in dry-run mode
+            instance = definition.factory()
+
+            # Get the actual implementation type
+            impl_type = type(instance)
+
+            # Analyze implementation class constructor
+            return DefinitionBuilder._get_parameter_types(impl_type)
+
+        except TypeInferenceError:
+            raise
+        except Exception as e:
+            raise TypeInferenceError(
+                f"Failed to discover implementation type for {interface.__name__}. "
+                f"The factory raised an exception during type discovery: {e}\n"
+                f"Hint: Ensure the factory can be executed without side effects."
+            ) from e
+        finally:
+            _resolution_context.reset(token)
+
+    def _discover_and_cache_parameter_types(
+        self,
+        interface: Type,
+        definition: Definition
+    ) -> None:
+        """Discover implementation type via dry-run and cache parameter types.
+
+        Used for Singleton lifecycle where the implementation type
+        is consistent across all resolutions.
+
+        Args:
+            interface: The interface type being resolved
+            definition: The Definition to update with discovered types
+
+        Raises:
+            TypeInferenceError: When type discovery fails
+        """
+        parameter_types = self._discover_parameter_types(interface, definition)
+
+        # Cache the results for singleton
+        definition.parameter_types = parameter_types
 
     def unload_modules(self, modules: List[KotInjectionModule]):
         """Unload modules and remove their definitions.
@@ -324,3 +411,27 @@ class KotInjectionContainer:
             return self.get(interface)
 
         return getter
+
+    def eager_initialize(self) -> None:
+        """Eagerly initialize all singleton definitions marked with created_at_start=True.
+
+        This method is called after loading modules to initialize singletons
+        that were registered with the `created_at_start=True` flag.
+
+        Only SINGLETON definitions with `created_at_start=True` and no existing
+        instance will be initialized.
+
+        Example::
+
+            module = KotInjectionModule()
+            with module:
+                module.single[Database](lambda: Database(), created_at_start=True)
+
+            container.load_modules([module])
+            container.eager_initialize()  # Database instance created here
+        """
+        for definition in self._definitions.values():
+            if (definition.lifecycle == KotInjectionLifeCycle.SINGLETON
+                    and definition.created_at_start
+                    and definition.instance is None):
+                self._resolve(definition.interface)

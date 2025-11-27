@@ -171,7 +171,8 @@ class TestDefinitionFromModule(unittest.TestCase):
         definition = definitions[0]
         self.assertEqual(definition.interface, Database)
         self.assertEqual(definition.lifecycle, KotInjectionLifeCycle.SINGLETON)
-        self.assertEqual(definition.parameter_types, [])
+        # parameter_types is None at registration time (lazy resolution)
+        self.assertIsNone(definition.parameter_types)
 
     def test_module_creates_definition_for_factory(self):
         """Module registration creates correct Definition for factory."""
@@ -187,17 +188,29 @@ class TestDefinitionFromModule(unittest.TestCase):
         self.assertEqual(definition.lifecycle, KotInjectionLifeCycle.FACTORY)
 
     def test_module_creates_definition_with_parameter_types(self):
-        """Module registration extracts parameter types correctly."""
+        """Parameter types are lazily resolved at first access."""
         module = KotInjectionModule()
         with module:
+            module.single[Database](lambda: Database())
+            module.single[CacheService](lambda: CacheService())
             module.single[UserRepository](
-                lambda: UserRepository(Database(), CacheService())
+                lambda: UserRepository(module.get(), module.get())
             )
 
         definitions = module.definitions
-        definition = definitions[0]
+        definition = definitions[2]  # UserRepository definition
 
-        self.assertEqual(definition.parameter_types, [Database, CacheService])
+        # parameter_types is None at registration time
+        self.assertIsNone(definition.parameter_types)
+
+        # After resolution, parameter_types should be cached
+        from kotinjection import KotInjection
+        KotInjection.start(modules=[module])
+        try:
+            KotInjection.get[UserRepository]()
+            self.assertEqual(definition.parameter_types, [Database, CacheService])
+        finally:
+            KotInjection.stop()
 
 
 if __name__ == '__main__':

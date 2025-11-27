@@ -18,6 +18,7 @@ Koin-style DSL syntax.
 - **Simple API** - Intuitive DSL similar to Koin
 - **Type Inference Support** - Automatic dependency resolution using Python type hints
 - **Lifecycle Management** - Supports singleton and factory patterns
+- **Eager Initialization** - Optional `created_at_start` for singleton pre-loading (like Koin)
 - **Lazy Injection** - Class attribute lazy dependency injection (like Koin's `by inject()`)
 - **Context Isolation** - Independent container instances for isolated DI contexts
 - **Lightweight** - Pure Python implementation with no external dependencies
@@ -80,6 +81,21 @@ module.single[Database](lambda: Database())
 module.factory[RequestHandler](
     lambda: RequestHandler(repo=module.get())
 )
+```
+
+### Eager Initialization
+
+By default, singletons are lazily initialized on first access. Use `created_at_start=True` to initialize at `start()` time.
+
+```python
+# Definition level - specific singleton is eagerly initialized
+module.single[Database](lambda: Database(), created_at_start=True)
+
+# Module level - all singletons in this module are eagerly initialized
+module = KotInjectionModule(created_at_start=True)
+with module:
+    module.single[Database](lambda: Database())  # Eager
+    module.single[Cache](lambda: Cache(), created_at_start=False)  # Override: Lazy
 ```
 
 ### Lazy Injection (Class Attributes)
@@ -218,7 +234,9 @@ KotInjection.inject[Type]  # Lazy injection (class attribute)
 KotInjection.stop()  # Cleanup
 
 # Module Definition
-module.single[Type](factory)  # Singleton
+module = KotInjectionModule(created_at_start=True)  # Eager init for all singletons
+module.single[Type](factory)  # Singleton (lazy by default)
+module.single[Type](factory, created_at_start=True)  # Singleton (eager)
 module.factory[Type](factory)  # Factory
 module.get()  # Type inference in factories
 

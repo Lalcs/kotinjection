@@ -229,9 +229,15 @@ class TestTypeInferenceErrorMessages(unittest.TestCase):
                 self.dependency = dependency
 
         module = KotInjectionModule()
+        with module:
+            # Registration succeeds (lazy type inference)
+            module.single[ServiceWithoutHint](lambda: ServiceWithoutHint(None))
+
+        KotInjection.start(modules=[module])
+
+        # Error occurs at resolution time
         with self.assertRaises(TypeInferenceError) as ctx:
-            with module:
-                module.single[ServiceWithoutHint](lambda: ServiceWithoutHint(None))
+            KotInjection.get[ServiceWithoutHint]()
 
         message = str(ctx.exception)
         self.assertIn("dependency", message)

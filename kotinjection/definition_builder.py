@@ -14,7 +14,7 @@ the specific lifecycle behaviors.
 """
 
 import inspect
-from typing import Type, TypeVar, Callable, List, TYPE_CHECKING
+from typing import Type, TypeVar, Callable, List, Optional, TYPE_CHECKING
 
 from .exceptions import TypeInferenceError
 from .lifecycle import KotInjectionLifeCycle
@@ -55,7 +55,7 @@ class DefinitionBuilder:
         self.module = module
         self.lifecycle = lifecycle
 
-    def __getitem__(self, interface: Type[T]) -> Callable[[Callable[[], T]], None]:
+    def __getitem__(self, interface: Type[T]) -> Callable[..., None]:
         """Enable subscript syntax: builder[Type](factory).
 
         This method enables the Koin-style syntax for dependency registration.
@@ -73,21 +73,35 @@ class DefinitionBuilder:
             # This syntax:
             module.single[Database](lambda: Database())
 
+            # With eager initialization:
+            module.single[Database](lambda: Database(), created_at_start=True)
+
             # Is equivalent to:
             register = module.single[Database]
             register(lambda: Database())
         """
 
-        def register(factory: Callable[[], T]) -> None:
-            # Use interface directly - no regex parsing needed!
-            # This is robust and works with any factory (lambda, function, etc.)
-            parameter_types = self._get_parameter_types(interface)
+        def register(
+            factory: Callable[[], T],
+            created_at_start: Optional[bool] = None
+        ) -> None:
+            # Determine effective created_at_start value:
+            # - If explicitly specified at definition level, use that
+            # - Otherwise, inherit from module's default
+            # - Only applies to SINGLETON lifecycle
+            effective_created_at_start = (
+                created_at_start if created_at_start is not None
+                else self.module._created_at_start
+            ) if self.lifecycle == KotInjectionLifeCycle.SINGLETON else False
 
+            # No pre-analysis - parameter types will be resolved lazily
+            # at resolution time by executing the factory in dry-run mode
             definition = Definition(
                 interface=interface,
                 factory=factory,
                 lifecycle=self.lifecycle,
-                parameter_types=parameter_types  # Pre-analyzed type information
+                created_at_start=effective_created_at_start,
+                # parameter_types will be populated during first resolution
             )
             self.module.add_definition(definition)
 

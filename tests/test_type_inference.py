@@ -22,42 +22,64 @@ class TestTypeInferenceError(KotInjectionTestCase):
     """Tests for TypeInferenceError"""
 
     def test_missing_type_hint_raises_error(self):
-        """TypeInferenceError raised for parameters without type hints"""
+        """TypeInferenceError raised for parameters without type hints at resolution time"""
         module = KotInjectionModule()
+        with module:
+            # Registration succeeds (lazy type inference)
+            module.single[ServiceWithoutHint](lambda: ServiceWithoutHint(None))
+
+        KotInjection.start(modules=[module])
+
+        # Error occurs at resolution time
         with self.assertRaises(TypeInferenceError) as ctx:
-            with module:
-                module.single[ServiceWithoutHint](lambda: ServiceWithoutHint(None))
+            KotInjection.get[ServiceWithoutHint]()
 
         self.assertIn("Missing type hint", str(ctx.exception))
         self.assertIn("dependency", str(ctx.exception))
 
     def test_partial_type_hints_raises_error(self):
-        """Error when some parameters lack type hints"""
+        """Error when some parameters lack type hints at resolution time"""
         module = KotInjectionModule()
+        with module:
+            # Registration succeeds (lazy type inference)
+            module.single[ServiceWithPartialHints](
+                lambda: ServiceWithPartialHints(None, None)
+            )
+
+        KotInjection.start(modules=[module])
+
+        # Error occurs at resolution time
         with self.assertRaises(TypeInferenceError) as ctx:
-            with module:
-                module.single[ServiceWithPartialHints](
-                    lambda: ServiceWithPartialHints(None, None)
-                )
+            KotInjection.get[ServiceWithPartialHints]()
 
         self.assertIn("cache", str(ctx.exception))
 
-    def test_none_interface_raises_error(self):
-        """Error when None is passed as type parameter"""
+    def test_none_interface_resolves_successfully(self):
+        """NoneType can be registered and resolved (edge case)"""
+        # Note: This is an edge case. NoneType has no typed parameters
+        # so it resolves successfully with lazy type inference.
         module = KotInjectionModule()
-        with self.assertRaises(TypeInferenceError) as ctx:
-            with module:
-                # This is an edge case - passing None as interface
-                module.single[None](lambda: None)
+        with module:
+            module.single[type(None)](lambda: None)
 
-        self.assertIn("class is None", str(ctx.exception))
+        KotInjection.start(modules=[module])
+
+        # NoneType can be resolved since it has no typed dependencies
+        result = KotInjection.get[type(None)]()
+        self.assertIsNone(result)
 
     def test_error_message_includes_class_name(self):
-        """Error message includes class name"""
+        """Error message includes class name at resolution time"""
         module = KotInjectionModule()
+        with module:
+            # Registration succeeds (lazy type inference)
+            module.single[ServiceWithoutHint](lambda: ServiceWithoutHint(None))
+
+        KotInjection.start(modules=[module])
+
+        # Error occurs at resolution time
         with self.assertRaises(TypeInferenceError) as ctx:
-            with module:
-                module.single[ServiceWithoutHint](lambda: ServiceWithoutHint(None))
+            KotInjection.get[ServiceWithoutHint]()
 
         self.assertIn("ServiceWithoutHint", str(ctx.exception))
 

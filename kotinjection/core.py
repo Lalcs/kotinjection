@@ -111,7 +111,8 @@ class KotInjectionCore:
         """Load additional modules into the container.
 
         This method allows dynamically adding new dependency definitions
-        to the running container.
+        to the running container. After loading, any singleton definitions
+        marked with `created_at_start=True` will be eagerly initialized.
 
         Args:
             modules: List of KotInjectionModule instances to load
@@ -130,6 +131,7 @@ class KotInjectionCore:
         """
         self._ensure_not_closed()
         self._container.load_modules(modules)
+        self._container.eager_initialize()
 
     def unload_modules(self, modules: List[KotInjectionModule]):
         """Unload modules from the container.
