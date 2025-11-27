@@ -18,6 +18,7 @@ Koin-style DSL syntax.
 - **Simple API** - Intuitive DSL similar to Koin
 - **Type Inference Support** - Automatic dependency resolution using Python type hints
 - **Lifecycle Management** - Supports singleton and factory patterns
+- **Lazy Injection** - Class attribute lazy dependency injection (like Koin's `by inject()`)
 - **Context Isolation** - Independent container instances for isolated DI contexts
 - **Lightweight** - Pure Python implementation with no external dependencies
 - **Type Safe** - Safe dependency management through type hints
@@ -79,6 +80,28 @@ module.single[Database](lambda: Database())
 module.factory[RequestHandler](
     lambda: RequestHandler(repo=module.get())
 )
+```
+
+### Lazy Injection (Class Attributes)
+
+Similar to Koin's `by inject()`, you can define dependencies as class attributes that are resolved lazily on first access.
+
+```python
+from kotinjection import KotInjection
+
+class MyService:
+    # Dependency is resolved on first access, not at class definition time
+    repository = KotInjection.inject[UserRepository]
+
+    def get_users(self):
+        return self.repository.get_users()
+
+# Initialize after class definition
+KotInjection.start(modules=[module])
+
+# Dependency is resolved when accessed
+service = MyService()
+service.get_users()  # repository is resolved here
 ```
 
 ## Context Isolation
@@ -177,25 +200,30 @@ For complete API documentation, see [API Reference](docs/api_reference.md).
 
 ### Quick Reference
 
-| Class                           | Description                        |
-|---------------------------------|------------------------------------|
-| `KotInjection`                  | Global DI container API            |
-| `KotInjectionCore`              | Isolated container instance        |
-| `KotInjectionModule`            | Dependency definitions container   |
-| `IsolatedKotInjectionComponent` | Base class for isolated components |
+| Class                           | Description                           |
+|---------------------------------|---------------------------------------|
+| `KotInjection`                  | Global DI container API               |
+| `KotInjectionCore`              | Isolated container instance           |
+| `KotInjectionModule`            | Dependency definitions container      |
+| `IsolatedKotInjectionComponent` | Base class for isolated components    |
+| `create_inject`                 | Create inject proxy for isolated containers |
 
 ### Key Methods
 
 ```python
 # Global API
 KotInjection.start(modules=[...])  # Initialize
-KotInjection.get[Type]()  # Retrieve dependency
+KotInjection.get[Type]()  # Retrieve dependency (eager)
+KotInjection.inject[Type]  # Lazy injection (class attribute)
 KotInjection.stop()  # Cleanup
 
 # Module Definition
 module.single[Type](factory)  # Singleton
 module.factory[Type](factory)  # Factory
 module.get()  # Type inference in factories
+
+# Isolated Container
+create_inject(app)  # Create inject proxy for isolated containers
 ```
 
 ## Advanced Usage
@@ -248,6 +276,7 @@ service = app.get[Service]()
 |-------------------|-----------------------------|-----------------------------------------|
 | DSL Syntax        | `single { }`, `factory { }` | `module.single[T]`, `module.factory[T]` |
 | Type Inference    | `get()`                     | `module.get()`                          |
+| Lazy Injection    | `by inject()`               | `KotInjection.inject[T]`                |
 | Context Isolation | `koinApplication { }`       | `KotInjectionCore()`                    |
 | Scope Management  | Multiple scopes             | Singleton/Factory only                  |
 | Context Manager   | N/A                         | `with` statement support                |

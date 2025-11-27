@@ -11,6 +11,8 @@ Complete API Reference
   - [KotInjectionCore](#kotinjectioncore)
   - [IsolatedKotInjectionComponent](#isolatedkotinjectioncomponent)
   - [KotInjectionModule](#kotinjectionmodule)
+  - [create_inject](#create_inject)
+  - [InjectDescriptor](#injectdescriptor)
 - [Lifecycle](#lifecycle)
   - [KotInjectionLifeCycle](#kotinjectionlifecycle)
 - [Exceptions](#exceptions)
@@ -55,7 +57,7 @@ KotInjection.start(modules=[module])
 
 #### `KotInjection.get[Type]()`
 
-**Description**: Retrieve a dependency by type from the global container.
+**Description**: Retrieve a dependency by type from the global container (eager evaluation).
 
 **Type Parameters**:
 - `Type`: The type to retrieve
@@ -72,6 +74,44 @@ repo = KotInjection.get[Repository]()
 - `NotInitializedError`: When the container is not initialized
 - `DefinitionNotFoundError`: When the specified type is not registered
 - `CircularDependencyError`: When circular dependency is detected
+
+---
+
+#### `KotInjection.inject[Type]`
+
+**Description**: Lazy dependency injection for class attributes. Similar to Koin's `by inject()`.
+
+**Type Parameters**:
+- `Type`: The type to inject
+
+**Returns**: `InjectDescriptor[Type]` - A descriptor that resolves the dependency on first access
+
+**Example**:
+```python
+class MyService:
+    # Dependency is resolved on first access, not at class definition time
+    repository = KotInjection.inject[UserRepository]
+    cache = KotInjection.inject[CacheService]
+
+    def get_users(self):
+        return self.repository.get_users()
+
+# Class can be defined before start()
+KotInjection.start(modules=[module])
+
+service = MyService()
+service.get_users()  # repository is resolved here
+```
+
+**Notes**:
+- Dependency is resolved lazily on first attribute access
+- Resolved value is cached per instance
+- Injected attributes are read-only (cannot be reassigned)
+- Class definition is allowed before `KotInjection.start()` is called
+
+**Exceptions**:
+- `NotInitializedError`: When accessed before `start()` is called
+- `DefinitionNotFoundError`: When the specified type is not registered
 
 ---
 
@@ -434,6 +474,92 @@ with module:
 
 **Exceptions**:
 - `ResolutionContextError`: When called outside a resolution context
+
+---
+
+### create_inject
+
+Function to create an inject proxy for isolated containers.
+
+#### `create_inject(app: KotInjectionCore)`
+
+**Description**: Create an inject proxy for an isolated container. This allows using `inject[Type]` syntax with isolated containers.
+
+**Parameters**:
+- `app` (KotInjectionCore): The isolated container instance
+
+**Returns**: `IsolatedInjectProxy` - A proxy that enables `inject[Type]` syntax
+
+**Example**:
+```python
+from kotinjection import KotInjectionCore, KotInjectionModule, create_inject
+
+# Create an isolated container
+module = KotInjectionModule()
+with module:
+    module.single[Database](lambda: Database())
+
+app = KotInjectionCore(modules=[module])
+
+# Create inject proxy for the isolated container
+app_inject = create_inject(app)
+
+class LibraryService:
+    # Use isolated container's inject
+    db = app_inject[Database]
+
+    def query(self):
+        return self.db.execute("SELECT * FROM users")
+
+service = LibraryService()
+service.query()
+
+# Don't forget to close
+app.close()
+```
+
+**Notes**:
+- Useful for library development with isolated containers
+- Each isolated container needs its own inject proxy
+- Raises `ContainerClosedError` when accessing after container is closed
+
+---
+
+### InjectDescriptor
+
+Descriptor class for lazy dependency injection.
+
+#### `InjectDescriptor[Type]`
+
+**Description**: A Python descriptor that enables lazy dependency injection for class attributes. Returned by `KotInjection.inject[Type]` or isolated inject proxies.
+
+**Type Parameters**:
+- `Type`: The type to inject
+
+**Behavior**:
+- When accessed on a class: Returns the descriptor itself
+- When accessed on an instance: Resolves and returns the dependency
+
+**Example**:
+```python
+from kotinjection import KotInjection, InjectDescriptor
+
+class MyService:
+    db = KotInjection.inject[Database]
+
+# Class-level access returns the descriptor
+print(type(MyService.db))  # <class 'InjectDescriptor'>
+
+# Instance-level access resolves the dependency
+KotInjection.start(modules=[module])
+service = MyService()
+print(type(service.db))  # <class 'Database'>
+```
+
+**Notes**:
+- Read-only: Attempting to set raises `AttributeError`
+- Cached: Resolved value is cached in instance `__dict__`
+- Works with both singleton and factory scopes
 
 ---
 
