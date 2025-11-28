@@ -57,13 +57,14 @@ class TestResolutionContextError(KotInjectionTestCase):
     def test_get_with_wrong_number_of_calls(self):
         """When get() call count doesn't match type parameter count"""
 
-        class TwoDependencyService:
-            def __init__(self, db: Database, cache: 'CacheService'):
-                self.db = db
-                self.cache = cache
-
+        # Define CacheService first to avoid forward reference issues
         class CacheService:
             pass
+
+        class TwoDependencyService:
+            def __init__(self, db: Database, cache: CacheService):
+                self.db = db
+                self.cache = cache
 
         # This test verifies the error message format
         module = KotInjectionModule()
