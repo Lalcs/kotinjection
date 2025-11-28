@@ -58,22 +58,25 @@ class DefinitionBuilder:
         self.lifecycle = lifecycle
 
     def __getitem__(self, interface: Type[T]) -> Callable[..., None]:
-        """Enable subscript syntax: builder[Type](factory).
+        """Enable subscript syntax: builder[Type](factory) or builder[Type](impl_type).
 
         This method enables the Koin-style syntax for dependency registration.
         When called with a type parameter, it returns a registration function
-        that accepts a factory callable.
+        that accepts either a factory callable or an implementation type.
 
         Args:
             interface: The type to register
 
         Returns:
-            A registration function that accepts a factory callable
+            A registration function that accepts a factory callable or implementation type
 
         Example::
 
-            # This syntax:
+            # With factory function:
             module.single[Database](lambda: Database())
+
+            # With implementation type (auto-instantiated):
+            module.single[DatabaseInterface](DatabaseImpl)
 
             # With eager initialization:
             module.single[Database](lambda: Database(), created_at_start=True)
@@ -84,7 +87,7 @@ class DefinitionBuilder:
         """
 
         def register(
-            factory: Callable[[], T],
+            factory_or_type: Union[Callable[[], T], Type[T]],
             created_at_start: Optional[bool] = None
         ) -> None:
             # Determine effective created_at_start value:
@@ -95,6 +98,23 @@ class DefinitionBuilder:
                 created_at_start if created_at_start is not None
                 else self.module._created_at_start
             ) if self.lifecycle == KotInjectionLifeCycle.SINGLETON else False
+
+            # Check if factory_or_type is a Type (class) or Callable (factory)
+            if isinstance(factory_or_type, type):
+                # Type was passed - create auto-factory that resolves dependencies
+                impl_type = factory_or_type
+                module_ref = self.module
+
+                def auto_factory(implementation: Type[T] = impl_type) -> T:
+                    """Auto-generated factory that resolves dependencies from __init__."""
+                    param_types = DefinitionBuilder._get_parameter_types(implementation)
+                    args = [module_ref.get[t]() for t in param_types]
+                    return implementation(*args)
+
+                factory = auto_factory
+            else:
+                # Callable was passed - use as-is
+                factory = factory_or_type
 
             # No pre-analysis - parameter types will be resolved lazily
             # at resolution time by executing the factory in dry-run mode
