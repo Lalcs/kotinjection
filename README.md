@@ -77,10 +77,16 @@ KotInjection.stop()
 # Singleton (same instance is reused)
 module.single[Database](lambda: Database())
 
+# Singleton with type (auto-instantiated with dependency resolution)
+module.single[IDatabase](PostgresDatabase)
+
 # Factory (new instance created each time)
 module.factory[RequestHandler](
     lambda: RequestHandler(repo=module.get())
 )
+
+# Factory with type (auto-instantiated)
+module.factory[RequestHandler](RequestHandler)
 ```
 
 ### Eager Initialization
@@ -235,9 +241,11 @@ KotInjection.stop()  # Cleanup
 
 # Module Definition
 module = KotInjectionModule(created_at_start=True)  # Eager init for all singletons
-module.single[Type](factory)  # Singleton (lazy by default)
+module.single[Type](factory)  # Singleton with factory (lazy by default)
+module.single[Type](ImplType)  # Singleton with type (auto-instantiated)
 module.single[Type](factory, created_at_start=True)  # Singleton (eager)
-module.factory[Type](factory)  # Factory
+module.factory[Type](factory)  # Factory with factory function
+module.factory[Type](ImplType)  # Factory with type (auto-instantiated)
 module.get()  # Type inference in factories
 module.get[Type]()  # Explicit type resolution (for third-party libs)
 
