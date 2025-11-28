@@ -22,13 +22,16 @@ Example::
     KotInjection.start(modules=[module])
 """
 
-from typing import List, Any, Optional
+from typing import List, Any, Optional, Type, TypeVar
 
 from .resolution_context import _resolution_context
 from .definition import Definition
 from .exceptions import NotInitializedError, ResolutionContextError
 from .factory_builder import FactoryBuilder
 from .singleton_builder import SingletonBuilder
+from .module_get_proxy import ModuleGetProxy
+
+T = TypeVar('T')
 
 
 class KotInjectionModule:
@@ -119,63 +122,98 @@ class KotInjectionModule:
         """
         self._definitions.append(definition)
 
-    @staticmethod
-    def get(index: Optional[int] = None) -> Any:
-        """
-        Type inference version of get() - for use within factories only
+    @property
+    def get(self) -> ModuleGetProxy:
+        """Get proxy for dependency resolution within factories.
 
-        Retrieves the appropriate container from the runtime context and resolves
-        dependencies. Automatically determines whether the global container or
-        an isolated container is being used.
+        Supports two styles of dependency resolution:
+        - module.get[Type]()  # Explicit type (works during DryRun)
+        - module.get()        # Type inference (placeholder during DryRun)
+
+        When using get[Type](), the dependency is resolved immediately even
+        during DryRun, allowing the actual instance to be used in places where
+        DryRunPlaceholder would cause errors (e.g., third-party libraries).
+
+        Returns:
+            ModuleGetProxy that supports both subscript and call syntax
+
+        Example with type inference::
+
+            module.single[Repository](lambda: Repository(module.get()))
+
+        Example with explicit type (avoids DryRun issues)::
+
+            module.single[DatabaseClient](
+                lambda: DatabaseClient(module.get[Config]())
+            )
+        """
+        return ModuleGetProxy(self)
+
+    def _get_with_type(self, interface: Type[T]) -> T:
+        """Resolve dependency with explicit type specification.
+
+        This method resolves the actual instance even during DryRun,
+        allowing it to be used with third-party libraries that cannot
+        handle DryRunPlaceholder.
+
+        Args:
+            interface: The type to resolve from the container
+
+        Returns:
+            The resolved dependency instance
+
+        Raises:
+            ResolutionContextError: When called outside a resolution context
+            NotInitializedError: When the container is not initialized
+        """
+        ctx = _resolution_context.get()
+        if ctx is None:
+            raise ResolutionContextError(
+                "get[Type]() must be used within a factory function"
+            )
+
+        # Increment index to maintain consistency with _get_inferred()
+        ctx.current_index += 1
+
+        if ctx.container is None:
+            raise NotInitializedError(
+                "Container is not initialized. "
+                "Call KotInjection.start() or app.load_modules() first"
+            )
+
+        # Always resolve actual instance (even in DryRun)
+        return ctx.container.resolve(interface)
+
+    def _get_inferred(self, index: Optional[int] = None) -> Any:
+        """Resolve dependency with type inference.
+
+        This is the original get() logic that uses the resolution context
+        to determine the type based on parameter position.
+
+        During DryRun, returns a DryRunPlaceholder for type discovery.
 
         Args:
             index: Optional parameter index to resolve. If specified, resolves
                 the parameter at that index directly instead of using sequential
-                type inference. Use this when mixing manual instances with
-                module.get() calls.
+                type inference.
 
         Returns:
-            The resolved dependency instance
+            The resolved dependency instance, or DryRunPlaceholder during DryRun
 
         Raises:
             ResolutionContextError: When called outside a resolution context,
                 or when index is out of range
             NotInitializedError: When the container is not initialized
 
-        Example:
-            ```python
-            module = KotInjectionModule()
-            with module:
-                module.single[Database](lambda: Database())
-                module.single[Repository](lambda: Repository(module.get()))
+        Example::
 
-            # Use with global container
-            KotInjection.start(modules=[module])
+            module.single[Repository](lambda: Repository(module.get()))
 
-            # Or use with isolated container
-            app = KotInjectionCore()
-            app.load_modules([module])
-            ```
+        Example with index::
 
-        Example with index parameter:
-            ```python
-            class UserRepository:
-                def __init__(self, redis: Redis, db: Database):
-                    ...
-
-            module = KotInjectionModule()
-            with module:
-                module.single[Database](lambda: Database())
-                # Use index=1 to resolve the second parameter (Database)
-                module.single[UserRepository](
-                    lambda: UserRepository(Redis(host="localhost"), module.get(1))
-                )
-            ```
-
-        Note:
-            When mixing manual instances with module.get(), prefer using
-            keyword arguments for clarity:
-            ``lambda: UserRepository(redis=Redis(), db=module.get())``
+            module.single[UserRepository](
+                lambda: UserRepository(Redis(host="localhost"), module.get(1))
+            )
         """
         ctx = _resolution_context.get()
         if ctx is None:

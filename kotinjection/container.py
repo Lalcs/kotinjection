@@ -317,6 +317,7 @@ class KotInjectionContainer:
         # Create dry-run context
         ctx = ResolutionContext()
         ctx.dry_run = True
+        ctx.container = self  # Set container for module.get[Type]() to work
         ctx.resolving.add(interface)
 
         token = _resolution_context.set(ctx)

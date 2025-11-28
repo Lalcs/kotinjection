@@ -312,8 +312,9 @@ class TestResolutionContextErrorMessages(unittest.TestCase):
 
     def test_get_outside_factory_message(self):
         """Error message when get() called outside factory."""
+        module = KotInjectionModule()
         with self.assertRaises(ResolutionContextError) as ctx:
-            KotInjectionModule.get()
+            module.get()
 
         message = str(ctx.exception)
         self.assertIn("get()", message)
