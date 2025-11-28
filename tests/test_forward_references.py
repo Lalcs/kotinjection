@@ -242,5 +242,112 @@ class TestIndexBasedResolutionWithForwardRef(KotInjectionTestCase):
         self.assertIsInstance(service.db, Database)
 
 
+# Classes for PEP 604 union syntax tests
+import multiprocessing
+
+
+class ServiceWithOptionalQueue:
+    """Service with multiprocessing.Queue | None (method-based type)."""
+
+    def __init__(self, queue: multiprocessing.Queue | None):
+        self.queue = queue
+
+
+class ServiceWithNestedUnion:
+    """Service with nested union types (int | str | None)."""
+
+    def __init__(self, value: int | str | None):
+        self.value = value
+
+
+class TestPEP604UnionSyntax(KotInjectionTestCase):
+    """Tests for PEP 604 union syntax (X | Y) support.
+
+    These tests verify that the | operator works with types that don't
+    natively support it (like multiprocessing.Queue which is a method).
+    """
+
+    def test_multiprocessing_queue_union_none_resolves(self):
+        """multiprocessing.Queue | None annotation resolves correctly."""
+        module = KotInjectionModule()
+        with module:
+            module.single[ServiceWithOptionalQueue](
+                lambda: ServiceWithOptionalQueue(queue=None)
+            )
+
+        KotInjection.start(modules=[module])
+
+        service = KotInjection.get[ServiceWithOptionalQueue]()
+        self.assertIsNone(service.queue)
+
+    def test_multiprocessing_queue_with_actual_instance(self):
+        """multiprocessing.Queue | None works with actual Queue instance."""
+        test_queue = multiprocessing.Queue()
+
+        module = KotInjectionModule()
+        with module:
+            module.single[ServiceWithOptionalQueue](
+                lambda: ServiceWithOptionalQueue(queue=test_queue)
+            )
+
+        KotInjection.start(modules=[module])
+
+        service = KotInjection.get[ServiceWithOptionalQueue]()
+        self.assertIs(service.queue, test_queue)
+
+    def test_nested_union_syntax_resolves(self):
+        """Nested X | Y | Z annotation resolves correctly."""
+        module = KotInjectionModule()
+        with module:
+            module.single[ServiceWithNestedUnion](
+                lambda: ServiceWithNestedUnion(value="test")
+            )
+
+        KotInjection.start(modules=[module])
+
+        service = KotInjection.get[ServiceWithNestedUnion]()
+        self.assertEqual(service.value, "test")
+
+
+class TestConvertUnionSyntax(unittest.TestCase):
+    """Unit tests for _convert_union_syntax helper method."""
+
+    def test_no_union_unchanged(self):
+        """Annotation without | is unchanged."""
+        from kotinjection.definition_builder import DefinitionBuilder
+        result = DefinitionBuilder._convert_union_syntax('int')
+        self.assertEqual(result, 'int')
+
+    def test_simple_union_conversion(self):
+        """X | Y is converted to Union[X, Y]."""
+        from kotinjection.definition_builder import DefinitionBuilder
+        result = DefinitionBuilder._convert_union_syntax('int | str')
+        self.assertEqual(result, 'Union[int, str]')
+
+    def test_optional_conversion(self):
+        """X | None is converted to Union[X, None]."""
+        from kotinjection.definition_builder import DefinitionBuilder
+        result = DefinitionBuilder._convert_union_syntax('int | None')
+        self.assertEqual(result, 'Union[int, None]')
+
+    def test_nested_union_conversion(self):
+        """X | Y | Z is converted to Union[X, Y, Z]."""
+        from kotinjection.definition_builder import DefinitionBuilder
+        result = DefinitionBuilder._convert_union_syntax('int | str | None')
+        self.assertEqual(result, 'Union[int, str, None]')
+
+    def test_qualified_name_conversion(self):
+        """multiprocessing.Queue | None is converted correctly."""
+        from kotinjection.definition_builder import DefinitionBuilder
+        result = DefinitionBuilder._convert_union_syntax('multiprocessing.Queue | None')
+        self.assertEqual(result, 'Union[multiprocessing.Queue, None]')
+
+    def test_generic_with_union(self):
+        """List[int | str] is converted correctly."""
+        from kotinjection.definition_builder import DefinitionBuilder
+        result = DefinitionBuilder._convert_union_syntax('List[int | str]')
+        self.assertEqual(result, 'List[Union[int, str]]')
+
+
 if __name__ == '__main__':
     unittest.main()

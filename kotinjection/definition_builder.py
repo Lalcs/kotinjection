@@ -13,9 +13,10 @@ This class is extended by SingletonBuilder and FactoryBuilder to provide
 the specific lifecycle behaviors.
 """
 
+import ast
 import inspect
 import typing
-from typing import Type, TypeVar, Callable, List, Optional, Dict, Any, TYPE_CHECKING
+from typing import Type, TypeVar, Callable, List, Optional, Dict, Any, TYPE_CHECKING, Union
 
 from .exceptions import TypeInferenceError
 from .lifecycle import KotInjectionLifeCycle
@@ -207,6 +208,11 @@ class DefinitionBuilder:
         except RecursionError:
             # Circular import or self-referencing type
             return {}
+        except TypeError:
+            # PEP 604 | operator used with a type that doesn't support it
+            # (e.g., multiprocessing.Queue which is a method, not a class)
+            # Fall back to manual string annotation resolution
+            return {}
         except Exception:
             # Any other error - fall back to raw annotations
             return {}
@@ -253,9 +259,20 @@ class DefinitionBuilder:
         if hasattr(cls, '__dict__'):
             namespace.update(cls.__dict__)
 
+        # Add typing constructs to namespace for Union conversion
+        if 'Union' not in namespace:
+            namespace['Union'] = Union
+        if 'Optional' not in namespace:
+            namespace['Optional'] = Optional
+
+        # Convert PEP 604 union syntax (X | Y) to Union[X, Y] before evaluation
+        # This is necessary because some types (like multiprocessing.Queue)
+        # don't support the | operator
+        converted_annotation = DefinitionBuilder._convert_union_syntax(annotation)
+
         # Try to evaluate the annotation in the namespace
         try:
-            resolved_type = eval(annotation, namespace)
+            resolved_type = eval(converted_annotation, namespace)
             return resolved_type
         except NameError:
             raise TypeInferenceError(
@@ -276,3 +293,90 @@ class DefinitionBuilder:
                 f"Failed to resolve forward reference '{annotation}' for parameter "
                 f"'{param_name}' in {cls.__name__}.__init__: {e}."
             ) from e
+
+    @staticmethod
+    def _convert_union_syntax(annotation: str) -> str:
+        """Convert PEP 604 union syntax (X | Y) to typing.Union[X, Y].
+
+        This method uses the ast module to safely parse and transform
+        pipe-style union syntax to the traditional Union[] syntax.
+        This is necessary because some types (like multiprocessing.Queue)
+        are methods/functions that don't support the | operator.
+
+        Args:
+            annotation: The annotation string to convert
+
+        Returns:
+            The converted annotation string using Union[] syntax.
+            Returns the original if no conversion is needed or parsing fails.
+
+        Example::
+
+            >>> DefinitionBuilder._convert_union_syntax('int | str')
+            'Union[int, str]'
+            >>> DefinitionBuilder._convert_union_syntax('multiprocessing.Queue | None')
+            'Union[multiprocessing.Queue, None]'
+        """
+        # Quick check: if no pipe operator, return as-is
+        if '|' not in annotation:
+            return annotation
+
+        try:
+            tree = ast.parse(annotation, mode='eval')
+        except SyntaxError:
+            # Invalid syntax - return original and let eval() handle the error
+            return annotation
+
+        class UnionTransformer(ast.NodeTransformer):
+            """Transform BinOp(|) nodes to Subscript(Union[...]) nodes."""
+
+            def visit_BinOp(self, node: ast.BinOp) -> ast.AST:
+                if isinstance(node.op, ast.BitOr):
+                    # Collect all types in the union chain BEFORE transforming children
+                    # This ensures X | Y | Z becomes Union[X, Y, Z] not Union[Union[X, Y], Z]
+                    types = DefinitionBuilder._collect_union_types(node)
+                    # Now transform each collected type (for nested unions inside generics)
+                    transformed_types = [self.visit(t) for t in types]
+                    return ast.Subscript(
+                        value=ast.Name(id='Union', ctx=ast.Load()),
+                        slice=ast.Tuple(elts=transformed_types, ctx=ast.Load()),
+                        ctx=ast.Load()
+                    )
+                # For non-BitOr BinOp, use default behavior
+                self.generic_visit(node)
+                return node
+
+        transformer = UnionTransformer()
+        new_tree = transformer.visit(tree)
+        ast.fix_missing_locations(new_tree)
+
+        return ast.unparse(new_tree.body)
+
+    @staticmethod
+    def _collect_union_types(node: ast.BinOp) -> List[ast.AST]:
+        """Collect all types from a chain of | operators.
+
+        Recursively traverses nested BinOp nodes with BitOr operators
+        to flatten the union chain into a list.
+
+        Args:
+            node: The BinOp AST node to collect types from
+
+        Returns:
+            List of AST nodes representing the types in the union
+
+        Example::
+
+            For 'int | str | None', returns AST nodes for [int, str, None]
+        """
+        types: List[ast.AST] = []
+
+        def collect(n: ast.AST) -> None:
+            if isinstance(n, ast.BinOp) and isinstance(n.op, ast.BitOr):
+                collect(n.left)
+                collect(n.right)
+            else:
+                types.append(n)
+
+        collect(node)
+        return types
