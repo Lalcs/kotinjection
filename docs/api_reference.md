@@ -407,7 +407,7 @@ with module:
 
 ---
 
-#### `module.single[Type](factory: Callable, created_at_start: Optional[bool] = None)`
+#### `module.single[Type](factory_or_type, created_at_start: Optional[bool] = None)`
 
 **Description**: Register a dependency with singleton scope.
 
@@ -415,21 +415,29 @@ with module:
 - `Type`: The type to register
 
 **Parameters**:
-- `factory` (Callable): Factory function to create the instance
+- `factory_or_type` (Callable or Type): Factory function to create the instance, or implementation type for auto-instantiation
 - `created_at_start` (Optional[bool]): If True, initialize at `start()` time. If False, use lazy initialization. If None (default), inherits from module's `created_at_start` setting.
 
 **Example**:
 ```python
-# No dependencies (lazy initialization by default)
+# With factory function (lazy initialization by default)
 module.single[Database](lambda: Database())
+
+# With implementation type (auto-instantiated with dependency resolution)
+module.single[Database](Database)
+module.single[IDatabase](PostgresDatabase)  # Interface → Implementation
 
 # Eager initialization
 module.single[Database](lambda: Database(), created_at_start=True)
+module.single[Database](Database, created_at_start=True)
 
-# With dependencies
+# With dependencies using factory
 module.single[Repository](
     lambda: Repository(db=module.get())
 )
+
+# With dependencies using type (auto-resolved from __init__ type hints)
+module.single[Repository](Repository)  # Dependencies auto-resolved
 
 # Override module-level setting
 module = KotInjectionModule(created_at_start=True)  # Module: eager
@@ -440,10 +448,11 @@ with module:
 **Notes**:
 - Same instance is reused
 - Factory is executed only once on first retrieval (or at `start()` time if `created_at_start=True`)
+- When passing a type, dependencies are automatically resolved from `__init__` type hints
 
 ---
 
-#### `module.factory[Type](factory: Callable)`
+#### `module.factory[Type](factory_or_type: Union[Callable, Type])`
 
 **Description**: Register a dependency with factory scope.
 
@@ -451,19 +460,23 @@ with module:
 - `Type`: The type to register
 
 **Parameters**:
-- `factory` (Callable): Factory function to create the instance
+- `factory_or_type` (Callable or Type): Factory function to create the instance, or implementation type for auto-instantiation
 
 **Example**:
 ```python
-# New instance created each time
+# With factory function - new instance created each time
 module.factory[RequestHandler](
     lambda: RequestHandler(repo=module.get())
 )
+
+# With implementation type - auto-instantiated each time
+module.factory[RequestHandler](RequestHandler)
 ```
 
 **Notes**:
 - New instance is created on each retrieval
 - Factory is executed every time
+- When passing a type, dependencies are automatically resolved from `__init__` type hints
 
 ---
 
