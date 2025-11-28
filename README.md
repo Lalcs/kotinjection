@@ -239,6 +239,7 @@ module.single[Type](factory)  # Singleton (lazy by default)
 module.single[Type](factory, created_at_start=True)  # Singleton (eager)
 module.factory[Type](factory)  # Factory
 module.get()  # Type inference in factories
+module.get[Type]()  # Explicit type resolution (for third-party libs)
 
 # Isolated Container
 create_inject(app)  # Create inject proxy for isolated containers
@@ -324,6 +325,69 @@ Specify the parameter index explicitly with `module.get(index)`:
 module.single[UserRepository](
     lambda: UserRepository(Redis(host="localhost"), module.get(1))
 )
+```
+
+### Explicit Type Resolution with `module.get[Type]()`
+
+When using third-party libraries in factory functions, DryRun mode may cause errors because `module.get()` returns a placeholder object during type discovery.
+
+#### The Problem
+
+```python
+from sqlalchemy import create_engine
+
+class Config:
+    DATABASE_URI = "postgresql://localhost/db"
+
+class DatabaseClient:
+    def __init__(self, config: Config):
+        # create_engine expects a real string, but during DryRun
+        # module.get() returns a DryRunPlaceholder!
+        self.engine = create_engine(config.DATABASE_URI)
+
+module = KotInjectionModule()
+with module:
+    module.single[Config](lambda: Config())
+    module.single[DatabaseClient](
+        lambda: DatabaseClient(module.get())  # Error during DryRun!
+    )
+```
+
+#### The Solution: Use `module.get[Type]()`
+
+Use explicit type specification to resolve the actual instance even during DryRun:
+
+```python
+module = KotInjectionModule()
+with module:
+    module.single[Config](lambda: Config())
+    # get[Config]() returns the actual Config instance, not a placeholder
+    module.single[DatabaseClient](
+        lambda: DatabaseClient(module.get[Config]())  # Works!
+    )
+```
+
+#### When to Use
+
+| Syntax | DryRun Behavior | Use When |
+|--------|-----------------|----------|
+| `module.get()` | Returns `DryRunPlaceholder` | Dependency is stored/passed without immediate use |
+| `module.get[Type]()` | Returns **actual instance** | Value is used immediately (e.g., passed to third-party libraries) |
+
+#### Mixing Both Styles
+
+You can mix `module.get()` and `module.get[Type]()` in the same factory:
+
+```python
+class Service:
+    def __init__(self, config: Config, db: Database):
+        self.uri = config.DATABASE_URI  # Uses config immediately
+        self.db = db  # Just stores reference
+
+module.single[Service](lambda: Service(
+    module.get[Config](),  # Explicit type - actual instance
+    module.get()           # Type inference - placeholder OK
+))
 ```
 
 ## Comparison with Koin

@@ -512,6 +512,74 @@ with module:
 
 ---
 
+#### `module.get[Type]()`
+
+**Description**: Explicit type resolution within factory functions. Unlike `module.get()`, this returns the actual instance even during DryRun mode.
+
+**Type Parameters**:
+- `Type`: The type to resolve
+
+**Returns**: Resolved dependency instance (actual instance, not placeholder)
+
+**Example**:
+```python
+from sqlalchemy import create_engine
+
+class Config:
+    DATABASE_URI = "postgresql://localhost/db"
+
+class DatabaseClient:
+    def __init__(self, config: Config):
+        # create_engine needs a real string, not a placeholder
+        self.engine = create_engine(config.DATABASE_URI)
+
+module = KotInjectionModule()
+with module:
+    module.single[Config](lambda: Config())
+    # Use get[Config]() to get actual instance during DryRun
+    module.single[DatabaseClient](
+        lambda: DatabaseClient(module.get[Config]())
+    )
+```
+
+**Use Cases**:
+- When passing resolved values to third-party libraries (e.g., SQLAlchemy, Redis clients)
+- When accessing attributes immediately in `__init__` (e.g., `config.DATABASE_URI`)
+- When using `created_at_start=True` with dependencies that require real values
+
+**Comparison with `module.get()`**:
+
+| Aspect | `module.get()` | `module.get[Type]()` |
+|--------|----------------|----------------------|
+| DryRun behavior | Returns `DryRunPlaceholder` | Returns actual instance |
+| Type inference | Automatic (from type hints) | Explicit (specified type) |
+| Use when | Dependency is stored for later use | Value is used immediately |
+
+**Mixing both styles**:
+```python
+class Service:
+    def __init__(self, config: Config, db: Database):
+        self.uri = config.DATABASE_URI  # Needs real config
+        self.db = db                     # Just stored
+
+module.single[Service](lambda: Service(
+    module.get[Config](),  # Explicit - actual instance
+    module.get()           # Inference - placeholder OK
+))
+```
+
+**Notes**:
+- Can only be used within factory functions
+- Increments internal index for consistency with `module.get()`
+- The specified type must be registered before resolution
+
+**Exceptions**:
+- `ResolutionContextError`: When called outside a factory function
+- `NotInitializedError`: When the container is not initialized
+- `DefinitionNotFoundError`: When the specified type is not registered
+
+---
+
 #### Type Inference Limitations
 
 `module.get()` resolves types based on sequential call order. When mixing manual instances with `module.get()`, **the call order must match the parameter order**.
