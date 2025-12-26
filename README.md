@@ -1,11 +1,11 @@
 # KotInjection
 
-[![image](https://img.shields.io/pypi/v/Kotinjection.svg)](https://pypi.org/project/Kotinjection/)
-[![image](https://img.shields.io/pypi/l/Kotinjection.svg)](https://pypi.org/project/Kotinjection/)
-[![image](https://img.shields.io/pypi/pyversions/Kotinjection.svg)](https://pypi.org/project/Kotinjection/)
-[![image](https://img.shields.io/github/contributors/lalcs/Kotinjection.svg)](https://github.com/lalcs/Kotinjection/graphs/contributors)
-[![image](https://img.shields.io/pypi/dm/Kotinjection)](https://pypistats.org/packages/Kotinjection)
-[![Unit Tests](https://github.com/Lalcs/Kotinjection/actions/workflows/unittest.yml/badge.svg)](https://github.com/Lalcs/Kotinjection/actions/workflows/unittest.yml)
+[![image](https://img.shields.io/pypi/v/kotinjection.svg)](https://pypi.org/project/kotinjection/)
+[![image](https://img.shields.io/pypi/l/kotinjection.svg)](https://pypi.org/project/kotinjection/)
+[![image](https://img.shields.io/pypi/pyversions/kotinjection.svg)](https://pypi.org/project/kotinjection/)
+[![image](https://img.shields.io/github/contributors/lalcs/kotinjection.svg)](https://github.com/lalcs/kotinjection/graphs/contributors)
+[![image](https://img.shields.io/pypi/dm/kotinjection)](https://pypistats.org/packages/kotinjection)
+[![Unit Tests](https://github.com/Lalcs/kotinjection/actions/workflows/unittest.yml/badge.svg)](https://github.com/Lalcs/kotinjection/actions/workflows/unittest.yml)
 
 Koin-like Dependency Injection Container for Python
 
