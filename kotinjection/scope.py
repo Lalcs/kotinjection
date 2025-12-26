@@ -5,10 +5,10 @@ Runtime scope instance for managing scoped dependencies.
 Each Scope instance maintains its own cache of scoped dependency instances.
 """
 
-from typing import TYPE_CHECKING, Type, TypeVar, Dict, Any, Callable, Optional
+from typing import TYPE_CHECKING, Type, TypeVar, Dict, Any, Optional
 
 from .definition import ScopeQualifier
-from .exceptions import DefinitionNotFoundError
+from .scope_get_proxy import ScopeGetProxy
 
 if TYPE_CHECKING:
     from .container import KotInjectionContainer
@@ -71,7 +71,7 @@ class Scope:
             )
 
     @property
-    def get(self) -> 'ScopeGetProxy':
+    def get(self) -> ScopeGetProxy:
         """Get proxy for resolving dependencies within this scope.
 
         Supports subscript syntax: scope.get[Type]()
@@ -166,36 +166,3 @@ class Scope:
         """
         self.close()
         return False
-
-
-class ScopeGetProxy:
-    """Proxy for scope.get[Type]() syntax.
-
-    Enables type-safe dependency resolution within a scope
-    using subscript syntax.
-    """
-
-    def __init__(self, scope: Scope):
-        """Initialize the proxy with a scope reference.
-
-        Args:
-            scope: The Scope to resolve dependencies from
-        """
-        self._scope = scope
-
-    def __getitem__(self, interface: Type[T]) -> Callable[[], T]:
-        """Enable subscript syntax: scope.get[Type]().
-
-        Args:
-            interface: The type to resolve
-
-        Returns:
-            A callable that returns the resolved dependency
-
-        Example::
-
-            ctx = scope.get[RequestContext]()
-        """
-        def getter() -> T:
-            return self._scope.resolve(interface)
-        return getter

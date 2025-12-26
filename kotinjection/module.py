@@ -30,7 +30,7 @@ from .exceptions import NotInitializedError, ResolutionContextError
 from .factory_builder import FactoryBuilder
 from .singleton_builder import SingletonBuilder
 from .module_get_proxy import ModuleGetProxy
-from .scope_definition_context import ScopeDefinitionProxy
+from .scope_definition_proxy import ScopeDefinitionProxy
 
 if TYPE_CHECKING:
     from .scoped_builder import ScopedBuilder
