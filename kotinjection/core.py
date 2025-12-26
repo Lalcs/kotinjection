@@ -22,11 +22,15 @@ Example::
     # close() is called automatically
 """
 
-from typing import List, TypeVar, Optional
+from typing import List, TypeVar, Optional, Type, Union, TYPE_CHECKING
 
 from .container import KotInjectionContainer
+from .definition import ScopeQualifier
 from .exceptions import ContainerClosedError
 from .module import KotInjectionModule
+
+if TYPE_CHECKING:
+    from .scope import Scope
 
 T = TypeVar('T')
 
@@ -218,3 +222,94 @@ class KotInjectionCore:
         """
         self.close()
         return False
+
+    @property
+    def create_scope(self) -> 'CreateScopeProxy':
+        """Create a new scope for resolving scoped dependencies.
+
+        Supports both string and type-based scope qualifiers:
+        - app.create_scope("request", "req-123")
+        - app.create_scope[UserSession]("session-123")
+
+        Returns:
+            CreateScopeProxy for scope creation
+
+        Raises:
+            ContainerClosedError: When the container has been closed
+
+        Example::
+
+            with app.create_scope("request", "req-1") as scope:
+                ctx = scope.get[RequestContext]()
+        """
+        self._ensure_not_closed()
+        return CreateScopeProxy(self._container)
+
+
+class CreateScopeProxy:
+    """Proxy for create_scope that supports both call and subscript syntax.
+
+    Enables:
+    - app.create_scope("scope_name", "scope_id")
+    - app.create_scope[ScopeType]("scope_id")
+    """
+
+    def __init__(self, container: KotInjectionContainer):
+        """Initialize the proxy with a container reference.
+
+        Args:
+            container: The container to create scopes from
+        """
+        self._container = container
+
+    def __call__(self, scope_qualifier: str, scope_id: str) -> 'Scope':
+        """Create a scope with a string qualifier.
+
+        Args:
+            scope_qualifier: The string name for the scope
+            scope_id: Unique identifier for this scope instance
+
+        Returns:
+            A new Scope instance
+
+        Example::
+
+            with app.create_scope("request", "req-1") as scope:
+                ctx = scope.get[RequestContext]()
+        """
+        return self._container.create_scope(scope_qualifier, scope_id)
+
+    def __getitem__(self, scope_type: Type[T]) -> '_TypedCreateScope[T]':
+        """Get a typed scope creator for a type-based scope.
+
+        Args:
+            scope_type: The type to use as scope qualifier
+
+        Returns:
+            A callable that creates the scope with just a scope_id
+
+        Example::
+
+            with app.create_scope[UserSession]("session-1") as scope:
+                data = scope.get[SessionData]()
+        """
+        return _TypedCreateScope(self._container, scope_type)
+
+
+class _TypedCreateScope:
+    """Helper for type-based scope creation."""
+
+    def __init__(self, container: KotInjectionContainer, scope_type: Type):
+        self._container = container
+        self._scope_type = scope_type
+
+    def __call__(self, scope_id: str) -> 'Scope':
+        """Create the scope with the given ID.
+
+        Args:
+            scope_id: Unique identifier for this scope instance
+
+        Returns:
+            A new Scope instance
+        """
+        return self._container.create_scope(self._scope_type, scope_id)
