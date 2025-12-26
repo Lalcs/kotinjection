@@ -23,8 +23,9 @@ Example::
 from typing import List
 
 from .get_proxy import KotInjectionGetProxy
-from .inject_proxy import KotInjectionInjectProxy
 from .global_context import GlobalContext
+from .global_create_scope_proxy import GlobalCreateScopeProxy
+from .inject_proxy import KotInjectionInjectProxy
 from .module import KotInjectionModule
 
 
@@ -171,3 +172,6 @@ class KotInjection:
             KotInjection.unload_modules([old_module])
         """
         cls._context.unload_modules(modules)
+
+    # Proxy object supporting create_scope("name", "id") and create_scope[Type]("id") syntax
+    create_scope = GlobalCreateScopeProxy(lambda: KotInjection._context)

@@ -258,3 +258,36 @@ class ResolutionContextError(KotInjectionError):
     """
 
     pass
+
+
+class ScopedResolutionError(KotInjectionError):
+    """
+    Raised when scoped dependency resolution fails.
+
+    This error occurs when trying to resolve a scoped dependency
+    outside its scope or from an incompatible scope.
+
+    Common causes:
+        - Calling ``KotInjection.get[ScopedType]()`` without an active scope
+        - Trying to resolve a scoped dependency from global context
+        - Scope qualifier mismatch between definition and resolution
+
+    Solution:
+        Resolve scoped dependencies within the appropriate scope::
+
+            module = KotInjectionModule()
+            with module:
+                with module.scope("request"):
+                    module.scoped[RequestContext](lambda: RequestContext())
+
+            KotInjection.start(modules=[module])
+
+            # Wrong - no active scope
+            # ctx = KotInjection.get[RequestContext]()  # ScopedResolutionError!
+
+            # Correct - within a scope
+            with KotInjection.create_scope("request", "req-1") as scope:
+                ctx = scope.get[RequestContext]()  # OK
+    """
+
+    pass

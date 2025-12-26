@@ -22,11 +22,15 @@ Example::
     # close() is called automatically
 """
 
-from typing import List, TypeVar, Optional
+from typing import List, TypeVar, Optional, TYPE_CHECKING
 
 from .container import KotInjectionContainer
+from .create_scope_proxy import CreateScopeProxy
 from .exceptions import ContainerClosedError
 from .module import KotInjectionModule
+
+if TYPE_CHECKING:
+    from .scope import Scope
 
 T = TypeVar('T')
 
@@ -218,3 +222,25 @@ class KotInjectionCore:
         """
         self.close()
         return False
+
+    @property
+    def create_scope(self) -> CreateScopeProxy:
+        """Create a new scope for resolving scoped dependencies.
+
+        Supports both string and type-based scope qualifiers:
+        - app.create_scope("request", "req-123")
+        - app.create_scope[UserSession]("session-123")
+
+        Returns:
+            CreateScopeProxy for scope creation
+
+        Raises:
+            ContainerClosedError: When the container has been closed
+
+        Example::
+
+            with app.create_scope("request", "req-1") as scope:
+                ctx = scope.get[RequestContext]()
+        """
+        self._ensure_not_closed()
+        return CreateScopeProxy(self._container)
