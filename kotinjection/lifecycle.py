@@ -11,3 +11,4 @@ class KotInjectionLifeCycle(Enum):
     """Lifecycle of dependencies"""
     SINGLETON = "SINGLETON"
     FACTORY = "FACTORY"
+    SCOPED = "SCOPED"

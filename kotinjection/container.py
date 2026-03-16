@@ -14,10 +14,10 @@ The container is typically not used directly. Instead, use KotInjection
 (global API) or KotInjectionCore (isolated container) classes.
 """
 
-from typing import Any, Callable, cast, Dict, List, Type, TypeVar
+from typing import Any, Callable, cast, Dict, List, Type, TypeVar, Optional, TYPE_CHECKING
 
 from .resolution_context import _resolution_context
-from .definition import Definition
+from .definition import Definition, ScopeQualifier
 from .exceptions import (
     CircularDependencyError,
     DefinitionNotFoundError,
@@ -27,6 +27,9 @@ from .exceptions import (
 from .lifecycle import KotInjectionLifeCycle
 from .module import KotInjectionModule
 from .resolution_context import ResolutionContext
+
+if TYPE_CHECKING:
+    from .scope import Scope
 
 T = TypeVar('T')
 
@@ -58,6 +61,8 @@ class KotInjectionContainer:
         Use load_modules() to add dependency definitions.
         """
         self._definitions: Dict[Type, Definition] = {}
+        # Track registered scope qualifiers for validation
+        self._registered_scopes: set[ScopeQualifier] = set()
 
     def load_modules(self, modules: List[KotInjectionModule]):
         """Load modules and register their definitions.
@@ -89,6 +94,9 @@ class KotInjectionContainer:
                         f"{definition.interface} is already registered"
                     )
                 self._definitions[definition.interface] = definition
+                # Track scope qualifiers for scoped definitions
+                if definition.scope_qualifier is not None:
+                    self._registered_scopes.add(definition.scope_qualifier)
 
     def get(self, interface: Type[T]) -> T:
         """Get dependency with automatic type inference.
@@ -436,3 +444,173 @@ class KotInjectionContainer:
                     and definition.created_at_start
                     and definition.instance is None):
                 self._resolve(definition.interface)
+
+    def create_scope(self, scope_qualifier: ScopeQualifier, scope_id: str) -> 'Scope':
+        """Create a new scope instance.
+
+        Creates a Scope object for resolving scoped dependencies.
+        The scope must be closed when no longer needed to release resources.
+
+        Args:
+            scope_qualifier: The scope qualifier (string name or Type)
+            scope_id: Unique identifier for this scope instance
+
+        Returns:
+            A new Scope instance
+
+        Raises:
+            DefinitionNotFoundError: When no scoped definitions exist for
+                the given scope qualifier
+
+        Example::
+
+            with container.create_scope("request", "req-123") as scope:
+                ctx = scope.get[RequestContext]()
+        """
+        from .scope import Scope
+
+        if scope_qualifier not in self._registered_scopes:
+            qualifier_name = (
+                scope_qualifier.__name__
+                if isinstance(scope_qualifier, type)
+                else scope_qualifier
+            )
+            raise DefinitionNotFoundError(
+                f"No scoped definitions found for scope '{qualifier_name}'. "
+                f"Define scoped dependencies using 'with module.scope(\"{qualifier_name}\"):'"
+            )
+
+        return Scope(scope_id, scope_qualifier, self)
+
+    def resolve_in_scope(self, interface: Type[T], scope: 'Scope') -> T:
+        """Resolve a dependency within a scope context.
+
+        For SCOPED dependencies:
+        - If the scope qualifier matches, returns cached or creates new instance
+        - If the scope qualifier doesn't match, raises ScopedResolutionError
+
+        For SINGLETON and FACTORY dependencies:
+        - Delegates to normal resolution
+
+        Args:
+            interface: The type to resolve
+            scope: The scope to resolve within
+
+        Returns:
+            The resolved dependency instance
+
+        Raises:
+            DefinitionNotFoundError: When the interface is not registered
+            ScopedResolutionError: When trying to resolve a scoped dependency
+                from an incompatible scope
+        """
+        from .exceptions import ScopedResolutionError
+
+        definition = self._definitions.get(interface)
+        if definition is None:
+            interface_name = interface.__name__ if hasattr(interface, '__name__') else str(interface)
+            registered_types = ", ".join(
+                t.__name__ if hasattr(t, '__name__') else str(t)
+                for t in self._definitions.keys()
+            ) or "None"
+
+            raise DefinitionNotFoundError(
+                f"{interface_name} is not registered.\n"
+                f"Registered types: {registered_types}\n"
+                f"Hint: module.single[{interface_name}](lambda: {interface_name}())"
+            )
+
+        # For non-scoped dependencies, use normal resolution
+        if definition.lifecycle != KotInjectionLifeCycle.SCOPED:
+            return self._resolve(interface)
+
+        # Check scope qualifier matches
+        if definition.scope_qualifier != scope.scope_qualifier:
+            def_qualifier = (
+                definition.scope_qualifier.__name__
+                if isinstance(definition.scope_qualifier, type)
+                else definition.scope_qualifier
+            )
+            scope_qualifier = (
+                scope.scope_qualifier.__name__
+                if isinstance(scope.scope_qualifier, type)
+                else scope.scope_qualifier
+            )
+            raise ScopedResolutionError(
+                f"Cannot resolve {interface.__name__} from scope '{scope_qualifier}'. "
+                f"This dependency belongs to scope '{def_qualifier}'."
+            )
+
+        # Check for cached instance in scope
+        cached = scope.get_cached_instance(interface)
+        if cached is not None:
+            return cached
+
+        # Create new instance
+        instance = self._create_scoped_instance(interface, definition, scope)
+
+        # Cache in scope
+        scope.cache_instance(interface, instance)
+
+        return instance
+
+    def _create_scoped_instance(
+        self,
+        interface: Type,
+        definition: Definition,
+        scope: 'Scope'
+    ) -> Any:
+        """Create an instance for a scoped dependency.
+
+        Similar to _create_instance but handles scoped resolution context.
+
+        Args:
+            interface: The type being instantiated
+            definition: The Definition containing factory and metadata
+            scope: The scope to resolve dependencies within
+
+        Returns:
+            The newly created instance
+        """
+        # Scoped dependencies always run dry-run (like factory)
+        parameter_types = self._discover_parameter_types(interface, definition)
+
+        # Create a new resolution context
+        parent_ctx = _resolution_context.get()
+        ctx = ResolutionContext()
+        ctx.parameter_types = parameter_types
+        ctx.current_index = 0
+        ctx.container = self
+        ctx.current_scope = scope  # Track current scope
+
+        if parent_ctx is not None:
+            ctx.resolving = parent_ctx.resolving.copy()
+
+        ctx.resolving.add(interface)
+
+        # Set context and execute factory
+        token = _resolution_context.set(ctx)
+        try:
+            instance = definition.factory()
+
+            # Validate return type
+            if __debug__:
+                from abc import ABC
+                is_abstract = hasattr(interface, '__abstractmethods__') or (
+                    isinstance(interface, type) and issubclass(interface, ABC)
+                )
+                if not is_abstract and not isinstance(instance, interface):
+                    raise TypeInferenceError(
+                        f"Factory for {interface.__name__} returned {type(instance).__name__}, "
+                        f"expected {interface.__name__}."
+                    )
+
+            return instance
+        except (DefinitionNotFoundError, CircularDependencyError, TypeInferenceError):
+            raise
+        except Exception as e:
+            raise TypeInferenceError(
+                f"Factory for {interface.__name__} raised an exception: {e}"
+            ) from e
+        finally:
+            _resolution_context.reset(token)

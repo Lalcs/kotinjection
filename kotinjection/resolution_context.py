@@ -20,6 +20,7 @@ from .exceptions import ResolutionContextError
 
 if TYPE_CHECKING:
     from .container import KotInjectionContainer
+    from .scope import Scope
 
 
 class ResolutionContext:
@@ -38,6 +39,7 @@ class ResolutionContext:
         current_index: Current position in parameter_types for get() calls
         container: Reference to the container performing the resolution
         dry_run: Flag indicating dry-run mode for type discovery
+        current_scope: Active scope for scoped dependency resolution
 
     Note:
         This class is used internally by KotInjectionContainer.
@@ -67,6 +69,7 @@ class ResolutionContext:
         self.current_index: int = 0  # Call order of get()
         self.container: Optional['KotInjectionContainer'] = None  # Currently active container
         self.dry_run: bool = False  # Dry-run mode for type discovery
+        self.current_scope: Optional['Scope'] = None  # Active scope for scoped resolution
 
     def get_next_parameter_type(self) -> Type:
         """Get the next parameter type and increment the index.

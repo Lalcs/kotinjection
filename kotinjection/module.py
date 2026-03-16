@@ -22,7 +22,7 @@ Example::
     KotInjection.start(modules=[module])
 """
 
-from typing import List, Any, Optional, Type, TypeVar
+from typing import List, Any, Optional, Type, TypeVar, TYPE_CHECKING
 
 from .resolution_context import _resolution_context
 from .definition import Definition
@@ -30,6 +30,10 @@ from .exceptions import NotInitializedError, ResolutionContextError
 from .factory_builder import FactoryBuilder
 from .singleton_builder import SingletonBuilder
 from .module_get_proxy import ModuleGetProxy
+from .scope_definition_proxy import ScopeDefinitionProxy
+
+if TYPE_CHECKING:
+    from .scoped_builder import ScopedBuilder
 
 T = TypeVar('T')
 
@@ -40,11 +44,15 @@ class KotInjectionModule:
     This class provides the Koin-style DSL for registering dependencies:
     - single[Type]: Register a singleton (same instance reused)
     - factory[Type]: Register a factory (new instance per request)
+    - scoped[Type]: Register a scoped dependency (shared within scope)
+    - scope("name") or scope[Type]: Define a scope for scoped dependencies
     - get(): Type inference within factories
 
     Attributes:
         single: Builder for singleton registrations
         factory: Builder for factory registrations
+        scope: Proxy for defining scope contexts
+        scoped: Builder for scoped registrations (only valid within scope context)
         _definitions: Internal list of registered definitions
 
     Example::
@@ -58,6 +66,10 @@ class KotInjectionModule:
             module.factory[UserRepository](
                 lambda: UserRepository(db=module.get())
             )
+
+            # Scoped - shared within the same scope instance
+            with module.scope("request"):
+                module.scoped[RequestContext](lambda: RequestContext())
     """
 
     def __init__(self, created_at_start: bool = False):
@@ -73,6 +85,8 @@ class KotInjectionModule:
         self._created_at_start: bool = created_at_start
         self.single = SingletonBuilder(self)
         self.factory = FactoryBuilder(self)
+        self.scope = ScopeDefinitionProxy(self)
+        self._current_scoped_builder: Optional['ScopedBuilder'] = None
 
     def __enter__(self) -> 'KotInjectionModule':
         """Enter context manager for cleaner definition blocks.
@@ -106,6 +120,32 @@ class KotInjectionModule:
             List of Definition objects registered in this module
         """
         return self._definitions
+
+    @property
+    def scoped(self) -> 'ScopedBuilder':
+        """Get the scoped builder for registering scoped dependencies.
+
+        This property is only valid within a scope definition context.
+        Use `with module.scope("name"):` or `with module.scope[Type]:`
+        to enter a scope context before using scoped.
+
+        Returns:
+            ScopedBuilder for registering scoped dependencies
+
+        Raises:
+            ResolutionContextError: When called outside a scope context
+
+        Example::
+
+            with module.scope("request"):
+                module.scoped[RequestContext](lambda: RequestContext())
+        """
+        if self._current_scoped_builder is None:
+            raise ResolutionContextError(
+                "scoped[] must be used within a scope context. "
+                "Use 'with module.scope(\"name\"):' or 'with module.scope[Type]:' first."
+            )
+        return self._current_scoped_builder
 
     def add_definition(self, definition: Definition) -> None:
         """Add a definition to the module.
