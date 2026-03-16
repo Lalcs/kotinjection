@@ -44,7 +44,6 @@ class GlobalCreateScopeProxy:
             with KotInjection.create_scope("request", "req-1") as scope:
                 ctx = scope.get[RequestContext]()
         """
-        from .global_typed_create_scope import GlobalTypedCreateScope
         return self._context_getter().get().create_scope(scope_qualifier, scope_id)
 
     def __getitem__(self, scope_type: Type[T]) -> 'GlobalTypedCreateScope[T]':
